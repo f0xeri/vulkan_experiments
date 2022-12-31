@@ -54,6 +54,9 @@ private:
 
     VkSemaphore renderSemaphore, presentSemaphore;
     VkFence renderFence;
+
+    VkPipeline trianglePipeline;
+    VkPipelineLayout trianglePipelineLayout;
 public:
     VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
     void createSwapchain(const std::shared_ptr<GLFWwindow>& window, uint32_t width, uint32_t height);
@@ -65,6 +68,9 @@ public:
     void createFramebuffers();
     void createSemaphoresAndFences();
     void drawFrame();
+
+    void loadShaderModule(std::string_view path, VkShaderModule* outShaderModule);
+    void createPipelines();
     ~VulkanBackend();
 };
 

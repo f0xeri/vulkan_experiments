@@ -3,8 +3,10 @@
 //
 
 #include "VulkanBackend.hpp"
+#include "VulkanPipelineBuilder.hpp"
 
 #include <cmath>
+#include <fstream>
 
 VulkanBackend::VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height) {
     windowExtent = {width, height};
@@ -40,6 +42,7 @@ VulkanBackend::VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::str
     createDefaultRenderPass();
     createFramebuffers();
     createSemaphoresAndFences();
+    createPipelines();
 }
 
 VulkanBackend::~VulkanBackend() {
@@ -296,6 +299,8 @@ void VulkanBackend::drawFrame() {
     renderPassInfo.pClearValues = &clearValue;
 
     vkCmdBeginRenderPass(mainCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+    vkCmdDraw(mainCommandBuffer, 3, 1, 0, 0);
     vkCmdEndRenderPass(mainCommandBuffer);
     VK_CHECK(vkEndCommandBuffer(mainCommandBuffer));
 
@@ -327,4 +332,127 @@ void VulkanBackend::drawFrame() {
     VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo));
 
     frameNumber++;
+}
+
+void VulkanBackend::loadShaderModule(std::string_view path, VkShaderModule* outShaderModule) {
+    std::ifstream file(path.data(), std::ios::ate | std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open shader file");
+    }
+
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
+    file.seekg(0);
+    file.read(reinterpret_cast<char *>(buffer.data()), fileSize);
+    file.close();
+
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.pNext = nullptr;
+    createInfo.flags = 0;
+    createInfo.codeSize = buffer.size() * sizeof(uint32_t);
+    createInfo.pCode = buffer.data();
+    VkShaderModule shaderModule;
+
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        std::cout << "Failed to create shader module " << path << std::endl;
+    }
+    else {
+        std::cout << "Created shader module " << path << std::endl;
+    }
+    *outShaderModule = shaderModule;
+}
+
+void VulkanBackend::createPipelines() {
+    VkShaderModule triangleVertShader;
+    loadShaderModule("assets/shaders/triangle.vert.spv", &triangleVertShader);
+    VkShaderModule triangleFragShader;
+    loadShaderModule("assets/shaders/triangle.frag.spv", &triangleFragShader);
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pNext = nullptr;
+    pipelineLayoutInfo.flags = 0;
+    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create pipeline layout");
+    }
+
+    VulkanPipelineBuilder pipelineBuilder;
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.pNext = nullptr;
+    vertShaderStageInfo.flags = 0;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = triangleVertShader;
+    vertShaderStageInfo.pName = "main";
+    vertShaderStageInfo.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.pNext = nullptr;
+    fragShaderStageInfo.flags = 0;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = triangleFragShader;
+    fragShaderStageInfo.pName = "main";
+    fragShaderStageInfo.pSpecializationInfo = nullptr;
+
+    pipelineBuilder.shaderStages.push_back(vertShaderStageInfo);
+    pipelineBuilder.shaderStages.push_back(fragShaderStageInfo);
+
+    pipelineBuilder.vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    pipelineBuilder.vertexInputInfo.pNext = nullptr;
+    pipelineBuilder.vertexInputInfo.flags = 0;
+    pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = 0;
+    pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = nullptr;
+    pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    pipelineBuilder.vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+    pipelineBuilder.inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    pipelineBuilder.inputAssembly.pNext = nullptr;
+    pipelineBuilder.inputAssembly.flags = 0;
+    pipelineBuilder.inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    pipelineBuilder.inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    pipelineBuilder.viewport.x = 0.0f;
+    pipelineBuilder.viewport.y = 0.0f;
+    pipelineBuilder.viewport.width = (float)windowExtent.width;
+    pipelineBuilder.viewport.height = (float)windowExtent.height;
+
+    pipelineBuilder.scissor.offset = { 0, 0 };
+    pipelineBuilder.scissor.extent = windowExtent;
+
+    pipelineBuilder.rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    pipelineBuilder.rasterizer.pNext = nullptr;
+    pipelineBuilder.rasterizer.flags = 0;
+    pipelineBuilder.rasterizer.depthClampEnable = VK_FALSE;
+    pipelineBuilder.rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    pipelineBuilder.rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    pipelineBuilder.rasterizer.lineWidth = 1.0f;
+    pipelineBuilder.rasterizer.cullMode = VK_CULL_MODE_NONE;
+    pipelineBuilder.rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    pipelineBuilder.rasterizer.depthBiasEnable = VK_FALSE;
+    pipelineBuilder.rasterizer.depthBiasConstantFactor = 0.0f;
+    pipelineBuilder.rasterizer.depthBiasClamp = 0.0f;
+    pipelineBuilder.rasterizer.depthBiasSlopeFactor = 0.0f;
+
+    pipelineBuilder.multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    pipelineBuilder.multisampling.pNext = nullptr;
+    pipelineBuilder.multisampling.flags = 0;
+    pipelineBuilder.multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    pipelineBuilder.multisampling.sampleShadingEnable = VK_FALSE;
+    pipelineBuilder.multisampling.minSampleShading = 1.0f;
+    pipelineBuilder.multisampling.pSampleMask = nullptr;
+    pipelineBuilder.multisampling.alphaToCoverageEnable = VK_FALSE;
+    pipelineBuilder.multisampling.alphaToOneEnable = VK_FALSE;
+
+    pipelineBuilder.colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    pipelineBuilder.colorBlendAttachment.blendEnable = VK_FALSE;
+
+    trianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
+
 }
