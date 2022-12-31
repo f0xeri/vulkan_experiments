@@ -1,0 +1,9 @@
+[submodule "thirdParty/glfw"]
+	path = thirdParty/glfw
+	url = https://github.com/glfw/glfw
+[submodule "thirdParty/glm"]
+	path = thirdParty/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "thirdParty/imgui"]
+	path = thirdParty/imgui
+	url = https://github.com/ocornut/imgui.git

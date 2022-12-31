@@ -1,0 +1,14 @@
+//
+// Created by f0xeri on 31.12.2022.
+//
+
+#ifndef VULKAN_EXPERIMENTS_VULKANBACKEND_HPP
+#define VULKAN_EXPERIMENTS_VULKANBACKEND_HPP
+
+
+class VulkanBackend {
+
+};
+
+
+#endif //VULKAN_EXPERIMENTS_VULKANBACKEND_HPP
