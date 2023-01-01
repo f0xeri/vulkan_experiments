@@ -23,7 +23,8 @@ public:
 
     VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
     static VkPipelineShaderStageCreateInfo createShaderStageInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
-    static VkPipelineVertexInputStateCreateInfo createVertexInputInfo(VkVertexInputBindingDescription bindingDescription, std::vector<VkVertexInputAttributeDescription> attributeDescriptions);
+    static VkPipelineVertexInputStateCreateInfo createVertexInputInfo(const std::shared_ptr<std::vector<VkVertexInputBindingDescription>>& bindingDescriptions,
+                                                                      const std::shared_ptr<std::vector<VkVertexInputAttributeDescription>>& attributeDescriptions);
     static VkPipelineVertexInputStateCreateInfo createVertexInputInfo();
     static VkPipelineInputAssemblyStateCreateInfo createInputAssemblyInfo(VkPrimitiveTopology topology);
     static VkPipelineRasterizationStateCreateInfo createRasterizerInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode, VkFrontFace frontFace);

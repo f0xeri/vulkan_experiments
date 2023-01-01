@@ -20,19 +20,35 @@ Application::Application(int width, int height, const char* title) {
         throw std::runtime_error("Failed to create GLFW window");
     }
     glfwMakeContextCurrent(mainWindow.get());
-    vulkanBackend = std::make_unique<VulkanBackend>(mainWindow, "Vulkan Experiments", width, height);
+    vulkanBackend = std::make_unique<VulkanBackend>();
     glfwSetWindowUserPointer(mainWindow.get(), this);
     glfwSetFramebufferSizeCallback(mainWindow.get(), [](GLFWwindow* window, int width, int height) {
         auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
         app->vulkanBackend->setWindowExtent(width, height);
         app->vulkanBackend->recreateSwapchain(width, height);
     });
+    initScene();
+    vulkanBackend->init(mainWindow, "Vulkan Experiments", width, height);
 }
 
 Application::~Application() {
     glfwTerminate();
     vulkanBackend.reset();
     mainWindow.reset();
+}
+
+void Application::initScene() {
+    std::shared_ptr<Mesh> triangleMesh = std::make_shared<Mesh>();
+    triangleMesh->vertices.resize(3);
+    triangleMesh->vertices[0].position = { 1.0f, 1.0f, 0.0f };
+    triangleMesh->vertices[1].position = { -1.0f, 1.0f, 0.0f };
+    triangleMesh->vertices[2].position = { 0.0f, -1.0f, 0.0f };
+
+    triangleMesh->vertices[0].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh->vertices[1].color = { 0.0f, 1.0f, 0.0f };
+    triangleMesh->vertices[2].color = { 0.0f, 0.0f, 1.0f };
+
+    vulkanBackend->addMesh(triangleMesh);
 }
 
 void Application::run() {

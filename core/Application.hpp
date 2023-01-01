@@ -18,6 +18,7 @@ public:
     int height;
     Application(int width, int height, const char* title);
     ~Application();
+    void initScene();
     void run();
 };
 

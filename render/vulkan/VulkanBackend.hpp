@@ -17,6 +17,10 @@
 #include <deque>
 #include <functional>
 #include "GLFW/glfw3.h"
+#include "glm/glm.hpp"
+#include <glm/ext.hpp>
+#include "vk_mem_alloc.h"
+#include "VulkanMesh.hpp"
 
 #define VK_CHECK(x)                                                 \
 	do                                                              \
@@ -79,11 +83,19 @@ private:
     VkPipeline trianglePipeline;
     VkPipelineLayout trianglePipelineLayout;
 
+    VmaAllocator allocator;
+
+    VulkanMesh triangleMesh;
+    VkPipeline meshPipeline;
+
     DeletionQueue deletionQueue;
 public:
+    std::vector<VulkanMesh> meshes;
+    void addMesh(const std::shared_ptr<Mesh>& mesh);
     bool windowResized = false;
 
-    VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
+    VulkanBackend();
+    void init(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
     void createSwapchain(uint32_t width, uint32_t height);
     void createPhysicalDevice();
     void createLogicalDevice();
@@ -101,6 +113,9 @@ public:
     }
     void recreateSwapchain(uint32_t width, uint32_t height);
     ~VulkanBackend();
+
+    void loadMeshes();
+    void uploadMesh(VulkanMesh& mesh);
 };
 
 #endif //VULKAN_EXPERIMENTS_VULKANBACKEND_HPP

@@ -4,6 +4,7 @@
 
 #include <stdexcept>
 #include <iostream>
+#include <memory>
 #include "VulkanPipelineBuilder.hpp"
 
 VkPipeline VulkanPipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
@@ -65,15 +66,15 @@ VkPipelineShaderStageCreateInfo VulkanPipelineBuilder::createShaderStageInfo(VkS
     return shaderStageInfo;
 }
 
-VkPipelineVertexInputStateCreateInfo VulkanPipelineBuilder::createVertexInputInfo(VkVertexInputBindingDescription bindingDescription,
-                                             std::vector<VkVertexInputAttributeDescription> attributeDescriptions) {
+VkPipelineVertexInputStateCreateInfo VulkanPipelineBuilder::createVertexInputInfo(const std::shared_ptr<std::vector<VkVertexInputBindingDescription>>& bindingDescriptions,
+                                                                                  const std::shared_ptr<std::vector<VkVertexInputAttributeDescription>>& attributeDescriptions) {
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.pNext = nullptr;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size();
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+    vertexInputInfo.vertexBindingDescriptionCount = bindingDescriptions->size();
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions->data();
+    vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions->size();
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions->data();
     return vertexInputInfo;
 }
 
