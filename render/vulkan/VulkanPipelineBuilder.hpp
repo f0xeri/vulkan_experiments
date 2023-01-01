@@ -21,8 +21,16 @@ public:
     VkPipelineMultisampleStateCreateInfo multisampling;
     VkPipelineLayout pipelineLayout;
 
-public:
     VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
+    static VkPipelineShaderStageCreateInfo createShaderStageInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
+    static VkPipelineVertexInputStateCreateInfo createVertexInputInfo(VkVertexInputBindingDescription bindingDescription, std::vector<VkVertexInputAttributeDescription> attributeDescriptions);
+    static VkPipelineVertexInputStateCreateInfo createVertexInputInfo();
+    static VkPipelineInputAssemblyStateCreateInfo createInputAssemblyInfo(VkPrimitiveTopology topology);
+    static VkPipelineRasterizationStateCreateInfo createRasterizerInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode, VkFrontFace frontFace);
+    static VkPipelineMultisampleStateCreateInfo createMultisamplingInfo(VkSampleCountFlagBits sampleCount);
+    static VkPipelineColorBlendAttachmentState createColorBlendAttachmentState();
+    static VkPipelineLayoutCreateInfo createPipelineLayoutInfo();
+
     ~VulkanPipelineBuilder();
 };
 

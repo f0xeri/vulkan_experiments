@@ -8,11 +8,14 @@
 #include <vulkan/vulkan.h>
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
+#include <ranges>
 #include <string_view>
 #include <vector>
 #include <stdexcept>
 #include <iostream>
 #include <memory>
+#include <deque>
+#include <functional>
 #include "GLFW/glfw3.h"
 
 #define VK_CHECK(x)                                                 \
@@ -25,6 +28,24 @@
 			abort();                                                \
 		}                                                           \
 	} while (0)
+
+struct DeletionQueue
+{
+    std::deque<std::function<void()>> deletors;
+
+    void push_function(std::function<void()>&& function) {
+        deletors.push_back(function);
+    }
+
+    void flush() {
+        // reverse iterate the deletion queue to execute all the functions
+        for (auto & deletor : std::ranges::reverse_view(deletors)) {
+            deletor(); //call the function
+        }
+
+        deletors.clear();
+    }
+};
 
 class VulkanBackend {
 private:
@@ -57,9 +78,13 @@ private:
 
     VkPipeline trianglePipeline;
     VkPipelineLayout trianglePipelineLayout;
+
+    DeletionQueue deletionQueue;
 public:
+    bool windowResized = false;
+
     VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
-    void createSwapchain(const std::shared_ptr<GLFWwindow>& window, uint32_t width, uint32_t height);
+    void createSwapchain(uint32_t width, uint32_t height);
     void createPhysicalDevice();
     void createLogicalDevice();
     void createQueue();
@@ -71,8 +96,11 @@ public:
 
     void loadShaderModule(std::string_view path, VkShaderModule* outShaderModule);
     void createPipelines();
+    void setWindowExtent(uint32_t width, uint32_t height) {
+        windowExtent = { width, height };
+    }
+    void recreateSwapchain(uint32_t width, uint32_t height);
     ~VulkanBackend();
 };
-
 
 #endif //VULKAN_EXPERIMENTS_VULKANBACKEND_HPP

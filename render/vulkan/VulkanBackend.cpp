@@ -36,7 +36,7 @@ VulkanBackend::VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::str
 
     createPhysicalDevice();
     createLogicalDevice();
-    createSwapchain(window, width, height);
+    createSwapchain(width, height);
     createQueue();
     createCommandPoolAndBuffer();
     createDefaultRenderPass();
@@ -46,15 +46,10 @@ VulkanBackend::VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::str
 }
 
 VulkanBackend::~VulkanBackend() {
-    vkDestroyCommandPool(device, commandPool, nullptr);
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
-    vkDestroyRenderPass(device, renderPass, nullptr);
-    for (int i = 0; i < framebuffers.size(); i++) {
-        vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-        vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-    }
-    vkDestroyDevice(device, nullptr);
+    vkDeviceWaitIdle(device);
+    deletionQueue.flush();
     vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
 }
 
@@ -100,7 +95,7 @@ void VulkanBackend::createLogicalDevice() {
     }
 }
 
-void VulkanBackend::createSwapchain(const std::shared_ptr<GLFWwindow>& window, uint32_t width, uint32_t height) {
+void VulkanBackend::createSwapchain(uint32_t width, uint32_t height) {
     swapchainImageFormat = VK_FORMAT_B8G8R8A8_SRGB;
     windowExtent = {width, height};
 
@@ -152,6 +147,9 @@ void VulkanBackend::createSwapchain(const std::shared_ptr<GLFWwindow>& window, u
             throw std::runtime_error("Failed to create image views");
         }
     }
+    deletionQueue.push_function([=, this]() {
+        vkDestroySwapchainKHR(device, swapchain, nullptr);
+    });
 }
 
 void VulkanBackend::createQueue() {
@@ -192,7 +190,9 @@ void VulkanBackend::createCommandPoolAndBuffer() {
     if (vkAllocateCommandBuffers(device, &allocInfo, &mainCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate command buffer");
     }
-
+    deletionQueue.push_function([=, this]() {
+        vkDestroyCommandPool(device, commandPool, nullptr);
+    });
 }
 
 void VulkanBackend::createDefaultRenderPass() {
@@ -225,6 +225,10 @@ void VulkanBackend::createDefaultRenderPass() {
     if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create render pass");
     }
+
+    deletionQueue.push_function([=, this]() {
+        vkDestroyRenderPass(device, renderPass, nullptr);
+    });
 }
 
 void VulkanBackend::createFramebuffers() {
@@ -244,6 +248,10 @@ void VulkanBackend::createFramebuffers() {
         if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create framebuffer");
         }
+        deletionQueue.push_function([=, this]() {
+            vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+            vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+        });
     }
 }
 
@@ -266,6 +274,12 @@ void VulkanBackend::createSemaphoresAndFences() {
     if (vkCreateFence(device, &fenceInfo, nullptr, &renderFence) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create fence");
     }
+
+    deletionQueue.push_function([=, this]() {
+        vkDestroyFence(device, renderFence, nullptr);
+        vkDestroySemaphore(device, presentSemaphore, nullptr);
+        vkDestroySemaphore(device, renderSemaphore, nullptr);
+    });
 }
 
 void VulkanBackend::drawFrame() {
@@ -273,8 +287,11 @@ void VulkanBackend::drawFrame() {
     vkResetFences(device, 1, &renderFence);
 
     uint32_t imageIndex;
-    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphore, VK_NULL_HANDLE, &imageIndex);
-
+    auto result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphore, VK_NULL_HANDLE, &imageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapchain(windowExtent.width, windowExtent.height);
+        return;
+    }
     vkResetCommandBuffer(mainCommandBuffer, 0);
 
     VkCommandBufferBeginInfo beginInfo{};
@@ -369,90 +386,53 @@ void VulkanBackend::createPipelines() {
     VkShaderModule triangleFragShader;
     loadShaderModule("assets/shaders/triangle.frag.spv", &triangleFragShader);
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.pNext = nullptr;
-    pipelineLayoutInfo.flags = 0;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = VulkanPipelineBuilder::createPipelineLayoutInfo();
 
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
 
     VulkanPipelineBuilder pipelineBuilder;
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.pNext = nullptr;
-    vertShaderStageInfo.flags = 0;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = triangleVertShader;
-    vertShaderStageInfo.pName = "main";
-    vertShaderStageInfo.pSpecializationInfo = nullptr;
-
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.pNext = nullptr;
-    fragShaderStageInfo.flags = 0;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = triangleFragShader;
-    fragShaderStageInfo.pName = "main";
-    fragShaderStageInfo.pSpecializationInfo = nullptr;
-
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo = VulkanPipelineBuilder::createShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVertShader);
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo = VulkanPipelineBuilder::createShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader);
     pipelineBuilder.shaderStages.push_back(vertShaderStageInfo);
     pipelineBuilder.shaderStages.push_back(fragShaderStageInfo);
 
-    pipelineBuilder.vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    pipelineBuilder.vertexInputInfo.pNext = nullptr;
-    pipelineBuilder.vertexInputInfo.flags = 0;
-    pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = 0;
-    pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    pipelineBuilder.vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+    pipelineBuilder.vertexInputInfo = VulkanPipelineBuilder::createVertexInputInfo();
+    pipelineBuilder.inputAssembly = VulkanPipelineBuilder::createInputAssemblyInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.rasterizer = VulkanPipelineBuilder::createRasterizerInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    pipelineBuilder.multisampling = VulkanPipelineBuilder::createMultisamplingInfo(VK_SAMPLE_COUNT_1_BIT);
+    pipelineBuilder.colorBlendAttachment = VulkanPipelineBuilder::createColorBlendAttachmentState();
 
-    pipelineBuilder.inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    pipelineBuilder.inputAssembly.pNext = nullptr;
-    pipelineBuilder.inputAssembly.flags = 0;
-    pipelineBuilder.inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    pipelineBuilder.inputAssembly.primitiveRestartEnable = VK_FALSE;
-
+    pipelineBuilder.viewport = {};
     pipelineBuilder.viewport.x = 0.0f;
     pipelineBuilder.viewport.y = 0.0f;
     pipelineBuilder.viewport.width = (float)windowExtent.width;
     pipelineBuilder.viewport.height = (float)windowExtent.height;
 
+    pipelineBuilder.scissor = {};
     pipelineBuilder.scissor.offset = { 0, 0 };
     pipelineBuilder.scissor.extent = windowExtent;
-
-    pipelineBuilder.rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    pipelineBuilder.rasterizer.pNext = nullptr;
-    pipelineBuilder.rasterizer.flags = 0;
-    pipelineBuilder.rasterizer.depthClampEnable = VK_FALSE;
-    pipelineBuilder.rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    pipelineBuilder.rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    pipelineBuilder.rasterizer.lineWidth = 1.0f;
-    pipelineBuilder.rasterizer.cullMode = VK_CULL_MODE_NONE;
-    pipelineBuilder.rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    pipelineBuilder.rasterizer.depthBiasEnable = VK_FALSE;
-    pipelineBuilder.rasterizer.depthBiasConstantFactor = 0.0f;
-    pipelineBuilder.rasterizer.depthBiasClamp = 0.0f;
-    pipelineBuilder.rasterizer.depthBiasSlopeFactor = 0.0f;
-
-    pipelineBuilder.multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    pipelineBuilder.multisampling.pNext = nullptr;
-    pipelineBuilder.multisampling.flags = 0;
-    pipelineBuilder.multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    pipelineBuilder.multisampling.sampleShadingEnable = VK_FALSE;
-    pipelineBuilder.multisampling.minSampleShading = 1.0f;
-    pipelineBuilder.multisampling.pSampleMask = nullptr;
-    pipelineBuilder.multisampling.alphaToCoverageEnable = VK_FALSE;
-    pipelineBuilder.multisampling.alphaToOneEnable = VK_FALSE;
-
-    pipelineBuilder.colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    pipelineBuilder.colorBlendAttachment.blendEnable = VK_FALSE;
+    pipelineBuilder.pipelineLayout = trianglePipelineLayout;
 
     trianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
+    deletionQueue.push_function([=, this]() {
+        vkDestroyShaderModule(device, triangleVertShader, nullptr);
+        vkDestroyShaderModule(device, triangleFragShader, nullptr);
+        vkDestroyPipeline(device, trianglePipeline, nullptr);
+        vkDestroyPipelineLayout(device, trianglePipelineLayout, nullptr);
+    });
+}
+
+void VulkanBackend::recreateSwapchain(uint32_t width, uint32_t height) {
+    vkDeviceWaitIdle(device);
+    deletionQueue.flush();
+
+    createSwapchain(width, height);
+    createCommandPoolAndBuffer();
+    createDefaultRenderPass();
+    createFramebuffers();
+    createSemaphoresAndFences();
+    createPipelines();
 }

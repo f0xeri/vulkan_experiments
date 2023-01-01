@@ -20,8 +20,13 @@ Application::Application(int width, int height, const char* title) {
         throw std::runtime_error("Failed to create GLFW window");
     }
     glfwMakeContextCurrent(mainWindow.get());
-
     vulkanBackend = std::make_unique<VulkanBackend>(mainWindow, "Vulkan Experiments", width, height);
+    glfwSetWindowUserPointer(mainWindow.get(), this);
+    glfwSetFramebufferSizeCallback(mainWindow.get(), [](GLFWwindow* window, int width, int height) {
+        auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+        app->vulkanBackend->setWindowExtent(width, height);
+        app->vulkanBackend->recreateSwapchain(width, height);
+    });
 }
 
 Application::~Application() {
