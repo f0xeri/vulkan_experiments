@@ -41,6 +41,7 @@ VkPipeline VulkanPipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pa
     pipelineInfo.renderPass = pass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+    pipelineInfo.pDepthStencilState = &depthStencil;
 
     VkPipeline newPipeline;
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
@@ -138,4 +139,18 @@ VkPipelineLayoutCreateInfo VulkanPipelineBuilder::createPipelineLayoutInfo() {
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
     return pipelineLayoutInfo;
+}
+
+VkPipelineDepthStencilStateCreateInfo VulkanPipelineBuilder::createDepthStencilInfo(bool bDepthTest, bool bDepthWrite, VkCompareOp compareOp) {
+    VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.pNext = nullptr;
+    depthStencil.minDepthBounds = 0.0f;
+    depthStencil.maxDepthBounds = 1.0f;
+    depthStencil.depthTestEnable = bDepthTest ? VK_TRUE : VK_FALSE;
+    depthStencil.depthWriteEnable = bDepthWrite ? VK_TRUE : VK_FALSE;
+    depthStencil.depthCompareOp = compareOp;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+    return depthStencil;
 }

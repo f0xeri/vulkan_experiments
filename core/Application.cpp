@@ -49,6 +49,18 @@ void Application::initScene() {
     triangleMesh->vertices[2].color = { 0.0f, 0.0f, 1.0f };
 
     vulkanBackend->addMesh(triangleMesh);
+
+    std::shared_ptr<Mesh> triangleMesh2 = std::make_shared<Mesh>();
+    triangleMesh2->vertices.resize(3);
+    triangleMesh2->vertices[0].position = { 1.0f, 1.0f, 10.0f };
+    triangleMesh2->vertices[1].position = { -1.0f, 1.0f, 10.0f };
+    triangleMesh2->vertices[2].position = { 0.0f, -1.0f, 10.0f };
+
+    triangleMesh2->vertices[0].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh2->vertices[1].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh2->vertices[2].color = { 1.0f, 0.0f, 0.0f };
+
+    vulkanBackend->addMesh(triangleMesh2);
 }
 
 void Application::run() {

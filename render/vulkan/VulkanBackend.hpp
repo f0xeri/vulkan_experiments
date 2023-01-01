@@ -51,6 +51,11 @@ struct DeletionQueue
     }
 };
 
+struct AllocatedImage {
+    VkImage image;
+    VmaAllocation allocation;
+};
+
 class VulkanBackend {
 private:
     uint64_t frameNumber = 0;
@@ -86,7 +91,10 @@ private:
     VmaAllocator allocator;
 
     VulkanMesh triangleMesh;
-    VkPipeline meshPipeline;
+
+    VkImageView depthImageView;
+    AllocatedImage depthImage;
+    VkFormat depthFormat;
 
     DeletionQueue deletionQueue;
 public:
@@ -116,6 +124,9 @@ public:
 
     void loadMeshes();
     void uploadMesh(VulkanMesh& mesh);
+
+    VkImageCreateInfo createImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
+    VkImageViewCreateInfo createImageViewInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 };
 
 #endif //VULKAN_EXPERIMENTS_VULKANBACKEND_HPP
