@@ -14,6 +14,7 @@ target_include_directories(
         ${CMAKE_PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/thirdParty/glfw/include
         ${CMAKE_PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/thirdParty/glm
         ${CMAKE_PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/thirdParty/VulkanMemoryAllocator/include
+        ${CMAKE_PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/thirdParty/tinyobjloader
         ${CMAKE_PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIR})
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(vulkan_experiments ${Vulkan_LIBRARY})

@@ -11,6 +11,7 @@
 #include "VulkanBuffer.hpp"
 #include "glm/glm.hpp"
 #include "core/Mesh.hpp"
+#include "VulkanShader.hpp"
 
 struct VertexInputDescription {
     std::vector<VkVertexInputBindingDescription> bindings;
@@ -27,5 +28,16 @@ struct VulkanMesh : public Mesh {
     VulkanBuffer vertexBuffer;
 };
 
+struct VulkanMaterial {
+    VulkanShader shader;
+    VkPipeline pipeline = {};
+    VkPipelineLayout pipelineLayout = {};
+};
+
+struct VulkanRenderObject : public RenderObject {
+    VulkanMesh *mesh = nullptr;
+    VulkanMaterial *material = nullptr;
+    glm::mat4 model = glm::mat4(1.0f);
+};
 
 #endif //VULKAN_EXPERIMENTS_VULKANMESH_HPP

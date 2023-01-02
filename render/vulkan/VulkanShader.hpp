@@ -9,6 +9,27 @@
 #include <vulkan/vulkan.h>
 #include "core/Shader.hpp"
 
+static VkShaderStageFlagBits convertShaderStageVulkan(ShaderStage stage)
+{
+    switch (stage)
+    {
+        case ShaderStage::VERTEX:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case ShaderStage::TESSELLATION_CONTROL:
+            return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case ShaderStage::TESSELLATION_EVALUATION:
+            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case ShaderStage::GEOMETRY:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case ShaderStage::FRAGMENT:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case ShaderStage::COMPUTE:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        default:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+    }
+}
+
 class VulkanShader : public Shader {
     VkDevice device;
 public:
@@ -16,6 +37,7 @@ public:
         VkShaderStageFlagBits stage = {};
         VkShaderModule module = VK_NULL_HANDLE;
     };
+
     std::vector<ShaderStage> stages;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 

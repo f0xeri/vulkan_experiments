@@ -9,9 +9,15 @@
 #include <vulkan/vulkan.h>
 #include "vk_mem_alloc.h"
 
-struct VulkanBuffer {
+class VulkanBuffer {
+    VmaAllocator allocator = {};
+public:
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = {};
+
+    VulkanBuffer() = default;
+    ~VulkanBuffer();
+    void uploadBuffer(VmaAllocator allocator, void* data, size_t size, VkBufferUsageFlags bufferUsage, VmaMemoryUsage memoryUsage);
 };
 
 

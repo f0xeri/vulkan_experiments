@@ -7,29 +7,9 @@
 #include <fstream>
 #include "VulkanShader.hpp"
 
-VkShaderStageFlagBits convertShaderStageVulkan(ShaderStage stage)
-{
-    switch (stage)
-    {
-        case ShaderStage::VERTEX:
-            return VK_SHADER_STAGE_VERTEX_BIT;
-        case ShaderStage::TESSELLATION_CONTROL:
-            return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case ShaderStage::TESSELLATION_EVALUATION:
-            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case ShaderStage::GEOMETRY:
-            return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case ShaderStage::FRAGMENT:
-            return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case ShaderStage::COMPUTE:
-            return VK_SHADER_STAGE_COMPUTE_BIT;
-        default:
-            return VK_SHADER_STAGE_VERTEX_BIT;
-    }
-}
-
 VulkanShader::VulkanShader(VkDevice device, const Shader &info) {
     this->device = device;
+    this->stagesInfo = info.stagesInfo;
     name = info.name;
     stages.reserve(info.stagesInfo.size());
     for (const auto& stageInfo : info.stagesInfo) {

@@ -19,6 +19,7 @@
 #include "GLFW/glfw3.h"
 #include "glm/glm.hpp"
 #include <glm/ext.hpp>
+#include <map>
 #include "vk_mem_alloc.h"
 #include "VulkanMesh.hpp"
 #include "VulkanShader.hpp"
@@ -59,8 +60,6 @@ struct AllocatedImage {
 
 class VulkanBackend {
 private:
-    uint64_t frameNumber = 0;
-
     VkInstance instance;
     VkSurfaceKHR surface;
 
@@ -100,13 +99,20 @@ private:
     std::unique_ptr<ShaderLoader> shaderLoader = nullptr;
 
     DeletionQueue deletionQueue;
+
+    uint32_t currentImageIndex = 0;
 public:
-    std::vector<VulkanMesh> meshes;
-    Shader shader;
-    void addMesh(const Mesh &mesh);
+    uint64_t frameNumber = 0;
+    std::map<std::string, VulkanMesh> meshes;
+    std::map<std::string, VulkanMaterial> materials;
+    std::map<std::string, Shader> shaders;
+    VulkanMaterial currentPipeline;
+    void addMesh(const std::string &name, const Mesh &mesh);
     ShaderLoader* getShaderLoader();
     void createShader(const Shader& info);
-    bool windowResized = false;
+    void createGraphicsPipeline(const std::string &name, const Shader &pipelineShader);
+    void pushConstants(const void *data, size_t size, ShaderStage stageFlags);
+    void bindPipeline(const std::string &name);
 
     VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
     void init(uint32_t width, uint32_t height);
@@ -118,6 +124,10 @@ public:
     void createDefaultRenderPass();
     void createFramebuffers();
     void createSemaphoresAndFences();
+    void beginFrame();
+    void drawMeshes();
+    void drawMesh(const VulkanMesh &mesh);
+    void endFrame();
     void drawFrame();
 
     void loadShaderModule(std::string_view path, VkShaderModule* outShaderModule);

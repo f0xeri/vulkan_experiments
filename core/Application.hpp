@@ -19,6 +19,7 @@ public:
     Application(int width, int height, const char* title);
     ~Application();
     void initScene();
+    void initPipelines();
     void run();
 };
 
