@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <string>
+#include "DescriptorBinding.hpp"
 
 enum class ShaderStage
 {
@@ -27,6 +28,7 @@ struct ShaderStageInfo
 struct Shader {
     std::string name;
     std::vector<ShaderStageInfo> stagesInfo;
+    DescriptorBinding descriptorBinding;
 };
 
 class ShaderLoader

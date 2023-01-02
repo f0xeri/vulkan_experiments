@@ -10,6 +10,7 @@
 VulkanShader::VulkanShader(VkDevice device, const Shader &info) {
     this->device = device;
     this->stagesInfo = info.stagesInfo;
+    this->descriptorBinding = info.descriptorBinding;
     name = info.name;
     stages.reserve(info.stagesInfo.size());
     for (const auto& stageInfo : info.stagesInfo) {

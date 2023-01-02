@@ -24,6 +24,8 @@
 #include "VulkanMesh.hpp"
 #include "VulkanShader.hpp"
 
+#define FRAME_OVERLAP 2
+
 #define VK_CHECK(x)                                                 \
 	do                                                              \
 	{                                                               \
@@ -58,6 +60,17 @@ struct AllocatedImage {
     VmaAllocation allocation;
 };
 
+struct FrameData {
+    VkSemaphore renderSemaphore, presentSemaphore;
+    VkFence renderFence;
+
+    VkCommandPool commandPool;
+    VkCommandBuffer mainCommandBuffer;
+
+    VulkanBuffer uniformBuffer;
+    VkDescriptorSet globalDescriptorSet;
+};
+
 class VulkanBackend {
 private:
     VkInstance instance;
@@ -76,17 +89,11 @@ private:
     VkQueue graphicsQueue;
     uint32_t graphicsQueueFamilyIndex;
 
-    VkCommandPool commandPool;
-    VkCommandBuffer mainCommandBuffer;
-
     VkRenderPass renderPass;
     std::vector<VkFramebuffer> framebuffers;
 
-    VkSemaphore renderSemaphore, presentSemaphore;
-    VkFence renderFence;
-
-    VkPipeline trianglePipeline;
-    VkPipelineLayout trianglePipelineLayout;
+    FrameData frames[FRAME_OVERLAP];
+    FrameData &getCurrentFrame() { return frames[frameNumber % FRAME_OVERLAP]; }
 
     VmaAllocator allocator;
 
@@ -96,9 +103,13 @@ private:
     AllocatedImage depthImage;
     VkFormat depthFormat;
 
+    VkDescriptorSetLayout globalSetLayout;
+    VkDescriptorPool descriptorPool;
+
     std::unique_ptr<ShaderLoader> shaderLoader = nullptr;
 
     DeletionQueue deletionQueue;
+
 
     uint32_t currentImageIndex = 0;
 public:
@@ -110,9 +121,12 @@ public:
     void addMesh(const std::string &name, const Mesh &mesh);
     ShaderLoader* getShaderLoader();
     void createShader(const Shader& info);
+    void createDescriptors(size_t size);
     void createGraphicsPipeline(const std::string &name, const Shader &pipelineShader);
     void pushConstants(const void *data, size_t size, ShaderStage stageFlags);
     void bindPipeline(const std::string &name);
+    VulkanBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    void setUniformBuffer(const void *data, size_t size);
 
     VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
     void init(uint32_t width, uint32_t height);

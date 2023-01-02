@@ -9,6 +9,12 @@
 #include <GLFW/glfw3.h>
 #include "render/vulkan/VulkanBackend.hpp"
 
+struct CameraData {
+    glm::mat4 view;
+    glm::mat4 projection;
+    glm::mat4 viewProj;
+};
+
 class Application {
 private:
     std::shared_ptr<GLFWwindow> mainWindow;

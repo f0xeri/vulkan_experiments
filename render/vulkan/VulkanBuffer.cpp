@@ -6,7 +6,6 @@
 #include "VulkanBuffer.hpp"
 
 void VulkanBuffer::uploadBuffer(VmaAllocator allocator, void *data, size_t size, VkBufferUsageFlags bufferUsage, VmaMemoryUsage memoryUsage) {
-    this->allocator = allocator;
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;

@@ -10,7 +10,6 @@
 #include "vk_mem_alloc.h"
 
 class VulkanBuffer {
-    VmaAllocator allocator = {};
 public:
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = {};
