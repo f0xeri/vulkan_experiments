@@ -21,6 +21,7 @@
 #include <glm/ext.hpp>
 #include "vk_mem_alloc.h"
 #include "VulkanMesh.hpp"
+#include "VulkanShader.hpp"
 
 #define VK_CHECK(x)                                                 \
 	do                                                              \
@@ -96,14 +97,19 @@ private:
     AllocatedImage depthImage;
     VkFormat depthFormat;
 
+    std::unique_ptr<ShaderLoader> shaderLoader = nullptr;
+
     DeletionQueue deletionQueue;
 public:
     std::vector<VulkanMesh> meshes;
-    void addMesh(const std::shared_ptr<Mesh>& mesh);
+    Shader shader;
+    void addMesh(const Mesh &mesh);
+    ShaderLoader* getShaderLoader();
+    void createShader(const Shader& info);
     bool windowResized = false;
 
-    VulkanBackend();
-    void init(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
+    VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
+    void init(uint32_t width, uint32_t height);
     void createSwapchain(uint32_t width, uint32_t height);
     void createPhysicalDevice();
     void createLogicalDevice();

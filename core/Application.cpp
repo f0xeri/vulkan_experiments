@@ -3,6 +3,7 @@
 //
 
 #include "Application.hpp"
+#include "Shader.hpp"
 
 Application::Application(int width, int height, const char* title) {
     this->width = width;
@@ -20,7 +21,7 @@ Application::Application(int width, int height, const char* title) {
         throw std::runtime_error("Failed to create GLFW window");
     }
     glfwMakeContextCurrent(mainWindow.get());
-    vulkanBackend = std::make_unique<VulkanBackend>();
+    vulkanBackend = std::make_unique<VulkanBackend>(mainWindow, "Vulkan Experiments", width, height);
     glfwSetWindowUserPointer(mainWindow.get(), this);
     glfwSetFramebufferSizeCallback(mainWindow.get(), [](GLFWwindow* window, int width, int height) {
         auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
@@ -28,7 +29,7 @@ Application::Application(int width, int height, const char* title) {
         app->vulkanBackend->recreateSwapchain(width, height);
     });
     initScene();
-    vulkanBackend->init(mainWindow, "Vulkan Experiments", width, height);
+    vulkanBackend->init(width, height);
 }
 
 Application::~Application() {
@@ -38,27 +39,33 @@ Application::~Application() {
 }
 
 void Application::initScene() {
-    std::shared_ptr<Mesh> triangleMesh = std::make_shared<Mesh>();
-    triangleMesh->vertices.resize(3);
-    triangleMesh->vertices[0].position = { 1.0f, 1.0f, 0.0f };
-    triangleMesh->vertices[1].position = { -1.0f, 1.0f, 0.0f };
-    triangleMesh->vertices[2].position = { 0.0f, -1.0f, 0.0f };
+    Shader shader = {};
+    shader.name = "triangle";
+    shader.stagesInfo.push_back(vulkanBackend->getShaderLoader()->loadFromBinaryFile("assets/shaders/triangle.vert.spv", ShaderStage::VERTEX));
+    shader.stagesInfo.push_back(vulkanBackend->getShaderLoader()->loadFromBinaryFile("assets/shaders/triangle.frag.spv", ShaderStage::FRAGMENT));
+    vulkanBackend->createShader(shader);
 
-    triangleMesh->vertices[0].color = { 1.0f, 0.0f, 0.0f };
-    triangleMesh->vertices[1].color = { 0.0f, 1.0f, 0.0f };
-    triangleMesh->vertices[2].color = { 0.0f, 0.0f, 1.0f };
+    Mesh triangleMesh;
+    triangleMesh.vertices.resize(3);
+    triangleMesh.vertices[0].position = { 1.0f, 1.0f, 0.0f };
+    triangleMesh.vertices[1].position = { -1.0f, 1.0f, 0.0f };
+    triangleMesh.vertices[2].position = { 0.0f, -1.0f, 0.0f };
+
+    triangleMesh.vertices[0].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh.vertices[1].color = { 0.0f, 1.0f, 0.0f };
+    triangleMesh.vertices[2].color = { 0.0f, 0.0f, 1.0f };
 
     vulkanBackend->addMesh(triangleMesh);
 
-    std::shared_ptr<Mesh> triangleMesh2 = std::make_shared<Mesh>();
-    triangleMesh2->vertices.resize(3);
-    triangleMesh2->vertices[0].position = { 1.0f, 1.0f, 10.0f };
-    triangleMesh2->vertices[1].position = { -1.0f, 1.0f, 10.0f };
-    triangleMesh2->vertices[2].position = { 0.0f, -1.0f, 10.0f };
+    Mesh triangleMesh2;
+    triangleMesh2.vertices.resize(3);
+    triangleMesh2.vertices[0].position = { 1.0f, 1.0f, 10.0f };
+    triangleMesh2.vertices[1].position = { -1.0f, 1.0f, 10.0f };
+    triangleMesh2.vertices[2].position = { 0.0f, -1.0f, 10.0f };
 
-    triangleMesh2->vertices[0].color = { 1.0f, 0.0f, 0.0f };
-    triangleMesh2->vertices[1].color = { 1.0f, 0.0f, 0.0f };
-    triangleMesh2->vertices[2].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh2.vertices[0].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh2.vertices[1].color = { 1.0f, 0.0f, 0.0f };
+    triangleMesh2.vertices[2].color = { 1.0f, 0.0f, 0.0f };
 
     vulkanBackend->addMesh(triangleMesh2);
 }
