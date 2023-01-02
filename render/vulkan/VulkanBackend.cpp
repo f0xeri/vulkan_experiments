@@ -603,8 +603,7 @@ void VulkanBackend::beginFrame() {
 
     vkBeginCommandBuffer(mainCommandBuffer, &beginInfo);
     VkClearValue clearValue;
-    float flash = std::abs(std::sin(frameNumber / 120.f));
-    clearValue.color = { { 0.0f, flash, 0.0f, 1.0f } };
+    clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
     VkClearValue depthClear;
     depthClear.depthStencil.depth = 1.f;

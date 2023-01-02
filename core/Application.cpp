@@ -49,8 +49,8 @@ void Application::initScene() {
     Mesh cvpiMesh;
     cvpiMesh.loadFromObj("assets/cvpi.obj");
     vulkanBackend->addMesh("cvpi", cvpiMesh);
-
     vulkanBackend->addMesh("cvpi2", cvpiMesh);
+
     vulkanBackend->meshes["cvpi2"].model = glm::translate(glm::mat4(1.0f), glm::vec3(-60.0f, 0.0f, -20.0f));
     vulkanBackend->meshes["cvpi"].model = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, -20.0f));
 }
