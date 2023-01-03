@@ -373,7 +373,7 @@ void VulkanBackend::recreateSwapchain(uint32_t width, uint32_t height) {
     //createPipelines();
     for (auto &pipeline : materials) {
         // TODO: fix it
-        createDescriptors(pipeline.second.shader.descriptorBinding.uniforms[0].allocSize);
+        createDescriptors(pipeline.second.shader);
         createGraphicsPipeline(pipeline.first, pipeline.second.shader);
     }
     loadMeshes();
@@ -603,12 +603,8 @@ VulkanBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
-    bufferInfo.flags = 0;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.queueFamilyIndexCount = 0;
-    bufferInfo.pQueueFamilyIndices = nullptr;
 
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = memoryUsage;
@@ -618,7 +614,7 @@ VulkanBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, 
     return buffer;
 }
 
-void VulkanBackend::createDescriptors(size_t size) {
+void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
     std::vector<VkDescriptorPoolSize> sizes ={{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 }};
 
     VkDescriptorPoolCreateInfo pool_info = {};
@@ -630,19 +626,23 @@ void VulkanBackend::createDescriptors(size_t size) {
 
     vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptorPool);
 
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+    for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
+        VkDescriptorSetLayoutBinding binding{};
+        binding.binding = uniform.binding;
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        binding.descriptorCount = 1;
+        binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        binding.pImmutableSamplers = nullptr;
+        bindings.push_back(binding);
+    }
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
+    layoutInfo.bindingCount = bindings.size();
+    layoutInfo.pBindings = bindings.data();
     layoutInfo.flags = 0;
-
     vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &globalSetLayout);
 
     for (auto & frame : frames) {
@@ -654,40 +654,45 @@ void VulkanBackend::createDescriptors(size_t size) {
 
         VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &frame.globalDescriptorSet));
 
-        frame.uniformBuffer = createBuffer(size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+        std::vector<VkWriteDescriptorSet> writes;
+        int i = 0;
+        for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
+            frame.uniformBuffers[uniform.name] = createBuffer(256, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = frame.uniformBuffers[uniform.name].buffer;
+            bufferInfo.offset = 0;
+            bufferInfo.range = uniform.allocSize;
 
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = frame.uniformBuffer.buffer;
-        bufferInfo.offset = 0;
-        bufferInfo.range = size;
-
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = frame.globalDescriptorSet;
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pBufferInfo = &bufferInfo;
-        descriptorWrite.pImageInfo = nullptr;
-        descriptorWrite.pTexelBufferView = nullptr;
-
-        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-        deletionQueue.push_function([&]() {
-            vmaDestroyBuffer(allocator, frame.uniformBuffer.buffer, frame.uniformBuffer.allocation);
-        });
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = frame.globalDescriptorSet;
+            descriptorWrite.dstBinding = uniform.binding;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &bufferInfo;
+            descriptorWrite.pImageInfo = nullptr;
+            descriptorWrite.pTexelBufferView = nullptr;
+            if (i == 0)
+                writes.push_back(descriptorWrite);
+            i++;
+        }
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
-
     deletionQueue.push_function([&]() {
         vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        for (auto & frame : frames) {
+            for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
+                vmaDestroyBuffer(allocator, frame.uniformBuffers[uniform.name].buffer, frame.uniformBuffers[uniform.name].allocation);
+            }
+        }
     });
 }
 
-void VulkanBackend::setUniformBuffer(const void *data, size_t size) {
+void VulkanBackend::setUniformBuffer(const std::string &name, const void *data, size_t size) {
     auto &frame = getCurrentFrame();
     void *mapped;
-    vmaMapMemory(allocator, frame.uniformBuffer.allocation, &mapped);
+    vmaMapMemory(allocator, frame.uniformBuffers[name].allocation, &mapped);
     memcpy(mapped, data, size);
-    vmaUnmapMemory(allocator, frame.uniformBuffer.allocation);
+    vmaUnmapMemory(allocator, frame.uniformBuffers[name].allocation);
 }

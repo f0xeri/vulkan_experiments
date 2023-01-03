@@ -46,6 +46,7 @@ void Application::initScene() {
     shader.stagesInfo.push_back(vulkanBackend->getShaderLoader()->loadFromBinaryFile("assets/shaders/triangle.frag.spv", ShaderStage::FRAGMENT));
     shader.descriptorBinding = DescriptorBinding();
     shader.descriptorBinding.addUniform(0, "cameraBuffer", UniformType::UNIFORM_BUFFER, sizeof(CameraData));
+    //shader.descriptorBinding.addUniform(1, "modelBuffer", UniformType::UNIFORM_BUFFER, sizeof(glm::mat4));
     vulkanBackend->createShader(shader);
 
     Mesh cvpiMesh;
@@ -79,7 +80,8 @@ void Application::run() {
             pushConstants.mvp = model;
             vulkanBackend->pushConstants(&pushConstants, sizeof(pushConstants), ShaderStage::VERTEX);
             CameraData cameraData = {view, projection, projection * view};
-            vulkanBackend->setUniformBuffer(&cameraData, sizeof(CameraData));
+            vulkanBackend->setUniformBuffer("cameraBuffer", &cameraData, sizeof(CameraData));
+            //vulkanBackend->setUniformBuffer("modelBuffer", &model, sizeof(glm::mat4));
             vulkanBackend->drawMesh(mesh.second);
         }
 
@@ -88,6 +90,6 @@ void Application::run() {
 }
 
 void Application::initPipelines() {
-    vulkanBackend->createDescriptors(sizeof(CameraData));
+    vulkanBackend->createDescriptors(vulkanBackend->shaders["default"]);
     vulkanBackend->createGraphicsPipeline("default", vulkanBackend->shaders["default"]);
 }
