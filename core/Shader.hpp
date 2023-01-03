@@ -25,10 +25,18 @@ struct ShaderStageInfo
     std::vector<uint32_t>bytecode;
 };
 
+struct Constant {
+    std::string name;
+    uint32_t size;
+    uint32_t offset;
+    std::vector<ShaderStage> stages;
+};
+
 struct Shader {
     std::string name;
     std::vector<ShaderStageInfo> stagesInfo;
     DescriptorBinding descriptorBinding;
+    std::vector<Constant> constants;
 };
 
 class ShaderLoader

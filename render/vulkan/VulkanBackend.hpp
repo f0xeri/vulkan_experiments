@@ -111,9 +111,44 @@ private:
 
     DeletionQueue deletionQueue;
 
-
     uint32_t currentImageIndex = 0;
+
+    VkPhysicalDeviceProperties gpuProperties;
+
+    static VkDescriptorType getDescriptorTypeFromUniformType(UniformType type) {
+        switch (type) {
+            case UniformType::UNIFORM_BUFFER:
+                return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            case UniformType::UNIFORM_BUFFER_DYNAMIC:
+                return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            case UniformType::COMBINED_IMAGE_SAMPLER:
+                return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            case UniformType::STORAGE_BUFFER:
+                return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            case UniformType::STORAGE_BUFFER_DYNAMIC:
+                return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            case UniformType::STORAGE_IMAGE:
+                return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            case UniformType::INPUT_ATTACHMENT:
+                return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            case UniformType::ACCELERATION_STRUCTURE_KHR:
+                return VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+            default:
+                throw std::runtime_error("Unknown uniform type");
+        }
+    }
+
 public:
+
+    VkDeviceSize getBufferAlignedSize(VkDeviceSize size) const {
+        VkDeviceSize minAlignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
+        size_t alignedSize = size;
+        if (minAlignment > 0) {
+            alignedSize = (alignedSize + minAlignment - 1) & ~(minAlignment - 1);
+        }
+        return alignedSize;
+    };
+
     uint64_t frameNumber = 0;
     std::map<std::string, VulkanMesh> meshes;
     std::map<std::string, VulkanMaterial> materials;
@@ -126,6 +161,9 @@ public:
     void createGraphicsPipeline(const std::string &name, const Shader &pipelineShader);
     void pushConstants(const void *data, size_t size, ShaderStage stageFlags);
     void bindPipeline(const std::string &name);
+    // bind descriptor sets, pass dynamic offsets
+    void bindDescriptorSets(const std::vector<uint32_t> &dynamicOffsets);
+    void bindDescriptorSets();
     VulkanBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     void setUniformBuffer(const std::string &name, const void *data, size_t size);
 

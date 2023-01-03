@@ -30,6 +30,16 @@ static VkShaderStageFlagBits convertShaderStageVulkan(ShaderStage stage)
     }
 }
 
+static uint32_t convertShaderStagesArrayVulkan(const std::vector<ShaderStage>& stages)
+{
+    uint32_t result = 0;
+    for (const auto& stage : stages)
+    {
+        result |= convertShaderStageVulkan(stage);
+    }
+    return result;
+}
+
 class VulkanShader : public Shader {
     VkDevice device;
 public:

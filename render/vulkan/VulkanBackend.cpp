@@ -84,6 +84,7 @@ void VulkanBackend::createPhysicalDevice() {
     // print device properties
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+    gpuProperties = deviceProperties;
     std::cout << "Device name: " << deviceProperties.deviceName << std::endl;
 }
 
@@ -446,11 +447,15 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
     auto vulkanShader = VulkanShader(device, pipelineShader);
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = VulkanPipelineBuilder::createPipelineLayoutInfo();
     VkPushConstantRange pushConstantRange = {};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(glm::mat4);
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    std::vector<VkPushConstantRange> pushConstantRanges;
+    for (auto &pushConstant : pipelineShader.constants) {
+        pushConstantRange.stageFlags = convertShaderStagesArrayVulkan(pushConstant.stages);
+        pushConstantRange.offset = pushConstant.offset;
+        pushConstantRange.size = pushConstant.size;
+        pushConstantRanges.push_back(pushConstantRange);
+    }
+    pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
+    pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &globalSetLayout;
@@ -505,7 +510,7 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
 void VulkanBackend::bindPipeline(const std::string &name) {
     currentPipeline = materials[name];
     vkCmdBindPipeline(getCurrentFrame().mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipeline);
-    vkCmdBindDescriptorSets(getCurrentFrame().mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 0, 1, &getCurrentFrame().globalDescriptorSet, 0, nullptr);
+    //vkCmdBindDescriptorSets(getCurrentFrame().mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 0, 1, &getCurrentFrame().globalDescriptorSet, 0, nullptr);
 }
 
 void VulkanBackend::beginFrame() {
@@ -615,7 +620,8 @@ VulkanBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, 
 }
 
 void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
-    std::vector<VkDescriptorPoolSize> sizes ={{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 }};
+    std::vector<VkDescriptorPoolSize> sizes ={{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+                                              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 }};
 
     VkDescriptorPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -631,7 +637,7 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
     for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
         VkDescriptorSetLayoutBinding binding{};
         binding.binding = uniform.binding;
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        binding.descriptorType = getDescriptorTypeFromUniformType(uniform.type);
         binding.descriptorCount = 1;
         binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         binding.pImmutableSamplers = nullptr;
@@ -655,9 +661,12 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
         VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &frame.globalDescriptorSet));
 
         std::vector<VkWriteDescriptorSet> writes;
-        int i = 0;
         for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
-            frame.uniformBuffers[uniform.name] = createBuffer(256, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            uint32_t sz = uniform.allocSize;
+            if (getDescriptorTypeFromUniformType(uniform.type) == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
+                sz = getBufferAlignedSize(sz) * meshes.size();
+            }
+            frame.uniformBuffers[uniform.name] = createBuffer(sz, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = frame.uniformBuffers[uniform.name].buffer;
             bufferInfo.offset = 0;
@@ -667,14 +676,14 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
             descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrite.dstSet = frame.globalDescriptorSet;
             descriptorWrite.dstBinding = uniform.binding;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorType = getDescriptorTypeFromUniformType(uniform.type);
             descriptorWrite.descriptorCount = 1;
-            descriptorWrite.pBufferInfo = &bufferInfo;
+            // TODO: mem leak
+            auto buffInf = new VkDescriptorBufferInfo{frame.uniformBuffers[uniform.name].buffer, 0, uniform.allocSize};
+            descriptorWrite.pBufferInfo = buffInf;
             descriptorWrite.pImageInfo = nullptr;
             descriptorWrite.pTexelBufferView = nullptr;
-            if (i == 0)
-                writes.push_back(descriptorWrite);
-            i++;
+            writes.push_back(descriptorWrite);
         }
         vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
@@ -690,9 +699,20 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
 }
 
 void VulkanBackend::setUniformBuffer(const std::string &name, const void *data, size_t size) {
+    // TODO: it will not work for dynamic uniform buffers
     auto &frame = getCurrentFrame();
     void *mapped;
     vmaMapMemory(allocator, frame.uniformBuffers[name].allocation, &mapped);
     memcpy(mapped, data, size);
     vmaUnmapMemory(allocator, frame.uniformBuffers[name].allocation);
+}
+
+void VulkanBackend::bindDescriptorSets(const std::vector<uint32_t> &dynamicOffsets) {
+    auto &frame = getCurrentFrame();
+    vkCmdBindDescriptorSets(frame.mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 0, 1, &frame.globalDescriptorSet, dynamicOffsets.size(), dynamicOffsets.data());
+}
+
+void VulkanBackend::bindDescriptorSets() {
+    auto &frame = getCurrentFrame();
+    vkCmdBindDescriptorSets(frame.mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 0, 1, &frame.globalDescriptorSet, 0, nullptr);
 }
