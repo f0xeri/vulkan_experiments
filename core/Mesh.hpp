@@ -14,6 +14,7 @@ struct Vertex {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec3 color;
+    glm::vec2 uv;
 };
 
 struct Mesh {
@@ -44,6 +45,11 @@ struct Mesh {
                         attrib.normals[3 * index.normal_index + 0],
                         attrib.normals[3 * index.normal_index + 1],
                         attrib.normals[3 * index.normal_index + 2]
+                };
+
+                vertex.uv = {
+                        attrib.texcoords[2 * index.texcoord_index + 0],
+                        attrib.texcoords[2 * index.texcoord_index + 1]
                 };
 
                 vertex.color = {1.0f, 1.0f, 1.0f};

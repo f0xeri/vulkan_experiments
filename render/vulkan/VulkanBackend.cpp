@@ -230,6 +230,22 @@ void VulkanBackend::createCommandPoolAndBuffer() {
             vkDestroyCommandPool(device, frame.commandPool, nullptr);
         });
     }
+
+    VkCommandPoolCreateInfo uploadCommandPoolInfo = poolInfo;
+    vkCreateCommandPool(device, &uploadCommandPoolInfo, nullptr, &uploadContext.commandPool);
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    poolInfo.pNext = nullptr;
+    allocInfo.commandPool = uploadContext.commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(device, &allocInfo, &uploadContext.commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate command buffer");
+    }
+    deletionQueue.push_function([=, this]() {
+        vkDestroyCommandPool(device, uploadContext.commandPool, nullptr);
+    });
 }
 
 void VulkanBackend::createDefaultRenderPass() {
@@ -344,6 +360,11 @@ void VulkanBackend::createSemaphoresAndFences() {
     fenceInfo.pNext = nullptr;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+    vkCreateFence(device, &fenceInfo, nullptr, &uploadContext.uploadFence);
+    deletionQueue.push_function([=, this]() {
+        vkDestroyFence(device, uploadContext.uploadFence, nullptr);
+    });
+
     for (auto & frame : frames) {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frame.presentSemaphore) != VK_SUCCESS ||
             vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frame.renderSemaphore) != VK_SUCCESS) {
@@ -372,6 +393,9 @@ void VulkanBackend::recreateSwapchain(uint32_t width, uint32_t height) {
     createFramebuffers();
     createSemaphoresAndFences();
     //createPipelines();
+    for (auto &texture : loadedTextures) {
+        addTexture(texture.second.texture, texture.second.binding);
+    }
     for (auto &pipeline : materials) {
         // TODO: fix it
         createDescriptors(pipeline.second.shader);
@@ -387,10 +411,47 @@ void VulkanBackend::loadMeshes() {
 }
 
 void VulkanBackend::uploadMesh(VulkanMesh& mesh) {
-    mesh.vertexBuffer.uploadBuffer(allocator, mesh.vertices.data(), sizeof(mesh.vertices[0]) * mesh.vertices.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    /*mesh.vertexBuffer.uploadBuffer(allocator, mesh.vertices.data(), sizeof(mesh.vertices[0]) * mesh.vertices.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    deletionQueue.push_function([=, this]() {
+        vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation);
+    });*/
+    const size_t bufferSize = mesh.vertices.size() * sizeof(Vertex);
+    VkBufferCreateInfo stagingBufferInfo = {};
+    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufferInfo.pNext = nullptr;
+    stagingBufferInfo.size = bufferSize;
+    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+    VulkanBuffer stagingBuffer;
+    VK_CHECK(vmaCreateBuffer(allocator, &stagingBufferInfo, &vmaallocInfo, &stagingBuffer.buffer, &stagingBuffer.allocation, nullptr));
+
+    void* data;
+    vmaMapMemory(allocator, stagingBuffer.allocation, &data);
+    memcpy(data, mesh.vertices.data(), bufferSize);
+    vmaUnmapMemory(allocator, stagingBuffer.allocation);
+
+    VkBufferCreateInfo vertexBufferInfo = {};
+    vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vertexBufferInfo.pNext = nullptr;
+
+    vertexBufferInfo.size = bufferSize;
+    vertexBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vmaallocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    VK_CHECK(vmaCreateBuffer(allocator, &vertexBufferInfo, &vmaallocInfo, &mesh.vertexBuffer.buffer, &mesh.vertexBuffer.allocation, nullptr));
+
+    immediateSubmit([&](VkCommandBuffer commandBuffer) {
+        VkBufferCopy copyRegion = {};
+        copyRegion.size = bufferSize;
+        copyRegion.dstOffset = 0;
+        copyRegion.srcOffset = 0;
+        vkCmdCopyBuffer(commandBuffer, stagingBuffer.buffer, mesh.vertexBuffer.buffer, 1, &copyRegion);
+    });
+
     deletionQueue.push_function([=, this]() {
         vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation);
     });
+    vmaDestroyBuffer(allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 }
 
 void VulkanBackend::addMesh(const std::string &name, const Mesh &mesh) {
@@ -457,8 +518,10 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
     pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
     pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &globalSetLayout;
+    VkDescriptorSetLayout setLayouts[] = { globalSetLayout, singleTextureSetLayout };
+
+    pipelineLayoutInfo.setLayoutCount = 2;
+    pipelineLayoutInfo.pSetLayouts = setLayouts;
 
     VkPipelineLayout pipelineLayout;
 
@@ -498,6 +561,10 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
     auto pipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
     deletionQueue.push_function([=, this]() {
+        for (auto &texture : loadedTextures) {
+            vmaDestroyImage(allocator, texture.second.image.image, texture.second.image.allocation);
+            vkDestroyImageView(device, texture.second.imageView, nullptr);
+        }
         for (auto &stage : vulkanShader.stages) {
             vkDestroyShaderModule(device, stage.module, nullptr);
         }
@@ -505,6 +572,35 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     });
     materials[name] = VulkanMaterial{vulkanShader, pipeline, pipelineLayout};
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.pNext = nullptr;
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &singleTextureSetLayout;
+    vkAllocateDescriptorSets(device, &allocInfo, &materials[name].textureSet);
+
+    std::vector<VkWriteDescriptorSet> descriptorWrites;
+    for (auto &texture : loadedTextures) {
+        VkSamplerCreateInfo *samplerInfo = new VkSamplerCreateInfo();
+        *samplerInfo = createSamplerCreateInfo(VK_FILTER_NEAREST);
+        VkSampler blockySampler;
+        vkCreateSampler(device, samplerInfo, nullptr, &blockySampler);
+        //write to the descriptor set so that it points to our texture
+        VkDescriptorImageInfo *imageBufferInfo = new VkDescriptorImageInfo();
+        imageBufferInfo->sampler = blockySampler;
+        imageBufferInfo->imageView = texture.second.imageView;
+        imageBufferInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkWriteDescriptorSet texture1 = createWriteDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materials[name].textureSet, imageBufferInfo, texture.second.binding);
+        descriptorWrites.push_back(texture1);
+        deletionQueue.push_function([=, this]() {
+            vkDestroySampler(device, blockySampler, nullptr);
+        });
+    }
+    vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
 void VulkanBackend::bindPipeline(const std::string &name) {
@@ -621,7 +717,8 @@ VulkanBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, 
 
 void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
     std::vector<VkDescriptorPoolSize> sizes ={{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
-                                              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 }};
+                                              { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
+                                              { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 }};
 
     VkDescriptorPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -689,6 +786,7 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
     }
     deletionQueue.push_function([&]() {
         vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, singleTextureSetLayout, nullptr);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         for (auto & frame : frames) {
             for (auto& uniform : pipelineShader.descriptorBinding.uniforms) {
@@ -696,6 +794,25 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
             }
         }
     });
+
+    std::vector<VkDescriptorSetLayoutBinding> textureBindings;
+    for (uint32_t i = 0; i < loadedTextures.size(); i++) {
+        auto textureBind = new VkDescriptorSetLayoutBinding();
+        textureBind->binding = i;
+        textureBind->descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        textureBind->descriptorCount = 1;
+        textureBind->stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        textureBind->pImmutableSamplers = nullptr;
+        textureBindings.push_back(*textureBind);
+    }
+
+    VkDescriptorSetLayoutCreateInfo textureLayoutInfo{};
+    textureLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    textureLayoutInfo.pNext = nullptr;
+    textureLayoutInfo.bindingCount = textureBindings.size();
+    textureLayoutInfo.pBindings = textureBindings.data();
+    textureLayoutInfo.flags = 0;
+    vkCreateDescriptorSetLayout(device, &textureLayoutInfo, nullptr, &singleTextureSetLayout);
 }
 
 void VulkanBackend::setUniformBuffer(const std::string &name, const void *data, size_t size) {
@@ -715,4 +832,150 @@ void VulkanBackend::bindDescriptorSets(const std::vector<uint32_t> &dynamicOffse
 void VulkanBackend::bindDescriptorSets() {
     auto &frame = getCurrentFrame();
     vkCmdBindDescriptorSets(frame.mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 0, 1, &frame.globalDescriptorSet, 0, nullptr);
+    // TODO: fix hardcoded value
+    if (materials["default"].textureSet != VK_NULL_HANDLE)
+        vkCmdBindDescriptorSets(frame.mainCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, currentPipeline.pipelineLayout, 1, 1, &materials["default"].textureSet, 0, nullptr);
+}
+
+void VulkanBackend::immediateSubmit(const std::function<void(VkCommandBuffer)> &function) {
+    VkCommandBuffer cmd = uploadContext.commandBuffer;
+    VkCommandBufferBeginInfo cmdBeginInfo = createCommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    vkResetFences(device, 1, &uploadContext.uploadFence);
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+    function(cmd);
+    VK_CHECK(vkEndCommandBuffer(cmd));
+    VkSubmitInfo submit = createSubmitInfo(&cmd);
+    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submit, uploadContext.uploadFence));
+    vkWaitForFences(device, 1, &uploadContext.uploadFence, true, UINT64_MAX);
+    vkResetFences(device, 1, &uploadContext.uploadFence);
+    vkResetCommandPool(device, uploadContext.commandPool, 0);
+}
+
+VkCommandBufferBeginInfo VulkanBackend::createCommandBufferBeginInfo(VkCommandBufferUsageFlags flags) {
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = flags;
+    return beginInfo;
+}
+
+VkSubmitInfo VulkanBackend::createSubmitInfo(VkCommandBuffer *cmd) {
+    VkSubmitInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    info.pNext = nullptr;
+    info.waitSemaphoreCount = 0;
+    info.pWaitSemaphores = nullptr;
+    info.pWaitDstStageMask = nullptr;
+    info.commandBufferCount = 1;
+    info.pCommandBuffers = cmd;
+    info.signalSemaphoreCount = 0;
+    info.pSignalSemaphores = nullptr;
+    return info;
+}
+
+void VulkanBackend::addTexture(const Texture &texture, uint32_t binding) {
+    void *pixels = texture.data;
+    VkDeviceSize imageSize = texture.width * texture.height * 4;
+    auto stagingBuffer = createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void *data;
+    vmaMapMemory(allocator, stagingBuffer.allocation, &data);
+    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    vmaUnmapMemory(allocator, stagingBuffer.allocation);
+
+    VkExtent3D imageExtent;
+    imageExtent.width = static_cast<uint32_t>(texture.width);
+    imageExtent.height = static_cast<uint32_t>(texture.height);
+    imageExtent.depth = 1;
+
+    VkImageCreateInfo dimageInfo = createImageInfo(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, imageExtent);
+
+    AllocatedImage *newImage = new AllocatedImage();
+
+    VmaAllocationCreateInfo dimgAllocInfo = {};
+    dimgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    vmaCreateImage(allocator, &dimageInfo, &dimgAllocInfo, &newImage->image, &newImage->allocation, nullptr);
+    //delete texture.data;
+    immediateSubmit([&](VkCommandBuffer cmd) {
+        VkImageSubresourceRange range;
+        range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        range.baseMipLevel = 0;
+        range.levelCount = 1;
+        range.baseArrayLayer = 0;
+        range.layerCount = 1;
+
+        VkImageMemoryBarrier imageBarrier_toTransfer = {};
+        imageBarrier_toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+
+        imageBarrier_toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageBarrier_toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        imageBarrier_toTransfer.image = newImage->image;
+        imageBarrier_toTransfer.subresourceRange = range;
+
+        imageBarrier_toTransfer.srcAccessMask = 0;
+        imageBarrier_toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toTransfer);
+
+        VkBufferImageCopy copyRegion = {};
+        copyRegion.bufferOffset = 0;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = imageExtent;
+
+        //copy the buffer into the image
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, newImage->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        VkImageMemoryBarrier imageBarrier_toReadable = imageBarrier_toTransfer;
+
+        imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        imageBarrier_toReadable.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        //barrier the image into the shader readable layout
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+    });
+
+    deletionQueue.push_function([&]() {
+
+    });
+    vmaDestroyBuffer(allocator, stagingBuffer.buffer, stagingBuffer.allocation);
+
+    VulkanTexture resTexture{};
+    resTexture.texture = texture;
+    resTexture.image = *newImage;
+    resTexture.binding = binding;
+    VkImageViewCreateInfo imageInfo = createImageViewInfo(VK_FORMAT_R8G8B8A8_SRGB, resTexture.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCreateImageView(device, &imageInfo, nullptr, &resTexture.imageView);
+    loadedTextures[texture.name] = resTexture;
+}
+
+VkSamplerCreateInfo VulkanBackend::createSamplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode) {
+    VkSamplerCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    info.pNext = nullptr;
+    info.magFilter = filters;
+    info.minFilter = filters;
+    info.addressModeU = samplerAddressMode;
+    info.addressModeV = samplerAddressMode;
+    info.addressModeW = samplerAddressMode;
+    return info;
+}
+
+VkWriteDescriptorSet VulkanBackend::createWriteDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo *imageInfo, uint32_t binding) {
+    VkWriteDescriptorSet write = {};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.pNext = nullptr;
+    write.dstBinding = binding;
+    write.dstSet = dstSet;
+    write.descriptorCount = 1;
+    write.descriptorType = type;
+    write.pImageInfo = imageInfo;
+    return write;
 }

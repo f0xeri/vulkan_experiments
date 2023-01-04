@@ -23,6 +23,7 @@
 #include "vk_mem_alloc.h"
 #include "VulkanMesh.hpp"
 #include "VulkanShader.hpp"
+#include "core/Texture.hpp"
 
 #define FRAME_OVERLAP 1
 
@@ -72,6 +73,19 @@ struct FrameData {
     VkDescriptorSet globalDescriptorSet;
 };
 
+struct UploadContext {
+    VkFence uploadFence;
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+};
+
+struct VulkanTexture {
+    AllocatedImage image;
+    VkImageView imageView;
+    Texture texture;
+    uint32_t binding;
+};
+
 class VulkanBackend {
 private:
     VkInstance instance;
@@ -107,6 +121,8 @@ private:
     VkDescriptorSetLayout globalSetLayout;
     VkDescriptorPool descriptorPool;
 
+    VkDescriptorSetLayout singleTextureSetLayout;
+
     std::unique_ptr<ShaderLoader> shaderLoader = nullptr;
 
     DeletionQueue deletionQueue;
@@ -114,6 +130,8 @@ private:
     uint32_t currentImageIndex = 0;
 
     VkPhysicalDeviceProperties gpuProperties;
+
+    UploadContext uploadContext;
 
     static VkDescriptorType getDescriptorTypeFromUniformType(UniformType type) {
         switch (type) {
@@ -139,7 +157,7 @@ private:
     }
 
 public:
-
+    bool isInitialized = false;
     VkDeviceSize getBufferAlignedSize(VkDeviceSize size) const {
         VkDeviceSize minAlignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
         size_t alignedSize = size;
@@ -153,6 +171,7 @@ public:
     std::map<std::string, VulkanMesh> meshes;
     std::map<std::string, VulkanMaterial> materials;
     std::map<std::string, Shader> shaders;
+    std::unordered_map<std::string, VulkanTexture> loadedTextures;
     VulkanMaterial currentPipeline;
     void addMesh(const std::string &name, const Mesh &mesh);
     ShaderLoader* getShaderLoader();
@@ -166,6 +185,8 @@ public:
     void bindDescriptorSets();
     VulkanBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     void setUniformBuffer(const std::string &name, const void *data, size_t size);
+    void immediateSubmit(const std::function<void(VkCommandBuffer)>& function);
+    void addTexture(const Texture &texture, uint32_t binding);
 
     VulkanBackend(const std::shared_ptr<GLFWwindow>& window, std::string_view appName, uint32_t width, uint32_t height);
     void init(uint32_t width, uint32_t height);
@@ -196,6 +217,10 @@ public:
 
     VkImageCreateInfo createImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
     VkImageViewCreateInfo createImageViewInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+    VkCommandBufferBeginInfo createCommandBufferBeginInfo(VkCommandBufferUsageFlags flags = 0);
+    VkSubmitInfo createSubmitInfo(VkCommandBuffer* cmd);
+    VkSamplerCreateInfo createSamplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    VkWriteDescriptorSet createWriteDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding);
 };
 
 #endif //VULKAN_EXPERIMENTS_VULKANBACKEND_HPP

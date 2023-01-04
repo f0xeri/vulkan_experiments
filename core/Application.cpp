@@ -2,6 +2,7 @@
 // Created by f0xeri on 30.12.2022.
 //
 #define TINYOBJLOADER_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
 #include "Application.hpp"
 #include "Shader.hpp"
 
@@ -59,12 +60,11 @@ void Application::initScene() {
 }
 
 void Application::run() {
+    glm::vec3 camPos = { 0.f,0.f,-100.f };
     while (!glfwWindowShouldClose(mainWindow.get())) {
-
         glfwPollEvents();
         vulkanBackend->beginFrame();
 
-        glm::vec3 camPos = { 0.f,0.f,-100.f };
         glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
         glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
         projection[1][1] *= -1;
@@ -83,6 +83,15 @@ void Application::run() {
 }
 
 void Application::initPipelines() {
+    Texture cvpiTexture("cvpiTexture");
+    cvpiTexture.loadTextureFromFile("assets/cvpi.jpg");
+
+    Texture cvpiTexture2("cvpiTexture2");
+    cvpiTexture2.loadTextureFromFile("assets/cvpi2.jpg");
+
+    vulkanBackend->addTexture(cvpiTexture, 0);
+    vulkanBackend->addTexture(cvpiTexture2, 1);
+
     vulkanBackend->createDescriptors(vulkanBackend->shaders["default"]);
     vulkanBackend->createGraphicsPipeline("default", vulkanBackend->shaders["default"]);
 }

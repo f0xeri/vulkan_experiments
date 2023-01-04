@@ -32,6 +32,7 @@ struct VulkanMaterial {
     VulkanShader shader;
     VkPipeline pipeline = {};
     VkPipelineLayout pipelineLayout = {};
+    VkDescriptorSet textureSet = VK_NULL_HANDLE;
 };
 
 struct VulkanRenderObject : public RenderObject {
