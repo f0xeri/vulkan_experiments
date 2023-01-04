@@ -564,6 +564,7 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
         for (auto &texture : loadedTextures) {
             vmaDestroyImage(allocator, texture.second.image.image, texture.second.image.allocation);
             vkDestroyImageView(device, texture.second.imageView, nullptr);
+            std::cout << "Destroyed texture " << texture.first << std::endl;
         }
         for (auto &stage : vulkanShader.stages) {
             vkDestroyShaderModule(device, stage.module, nullptr);
@@ -584,23 +585,26 @@ void VulkanBackend::createGraphicsPipeline(const std::string &name, const Shader
 
     std::vector<VkWriteDescriptorSet> descriptorWrites;
     for (auto &texture : loadedTextures) {
-        VkSamplerCreateInfo *samplerInfo = new VkSamplerCreateInfo();
-        *samplerInfo = createSamplerCreateInfo(VK_FILTER_NEAREST);
+        VkSamplerCreateInfo samplerInfo;
+        samplerInfo = createSamplerCreateInfo(VK_FILTER_NEAREST);
         VkSampler blockySampler;
-        vkCreateSampler(device, samplerInfo, nullptr, &blockySampler);
+        vkCreateSampler(device, &samplerInfo, nullptr, &blockySampler);
         //write to the descriptor set so that it points to our texture
         VkDescriptorImageInfo *imageBufferInfo = new VkDescriptorImageInfo();
         imageBufferInfo->sampler = blockySampler;
         imageBufferInfo->imageView = texture.second.imageView;
         imageBufferInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        VkWriteDescriptorSet texture1 = createWriteDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materials[name].textureSet, imageBufferInfo, texture.second.binding);
-        descriptorWrites.push_back(texture1);
+        descriptorWrites.push_back(createWriteDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materials[name].textureSet, imageBufferInfo, texture.second.binding));
         deletionQueue.push_function([=, this]() {
             vkDestroySampler(device, blockySampler, nullptr);
         });
     }
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    // delete imageBufferInfo pointers
+    for (auto &write : descriptorWrites) {
+        delete write.pImageInfo;
+    }
 }
 
 void VulkanBackend::bindPipeline(const std::string &name) {
@@ -783,6 +787,7 @@ void VulkanBackend::createDescriptors(const Shader &pipelineShader) {
             writes.push_back(descriptorWrite);
         }
         vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+
     }
     deletionQueue.push_function([&]() {
         vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
@@ -872,6 +877,7 @@ VkSubmitInfo VulkanBackend::createSubmitInfo(VkCommandBuffer *cmd) {
     return info;
 }
 
+// TODO: mem leak somewhere here
 void VulkanBackend::addTexture(const Texture &texture, uint32_t binding) {
     void *pixels = texture.data;
     VkDeviceSize imageSize = texture.width * texture.height * 4;
@@ -942,14 +948,12 @@ void VulkanBackend::addTexture(const Texture &texture, uint32_t binding) {
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
     });
 
-    deletionQueue.push_function([&]() {
-
-    });
     vmaDestroyBuffer(allocator, stagingBuffer.buffer, stagingBuffer.allocation);
-
     VulkanTexture resTexture{};
     resTexture.texture = texture;
     resTexture.image = *newImage;
+    // TODO: do we need it?
+    delete newImage;
     resTexture.binding = binding;
     VkImageViewCreateInfo imageInfo = createImageViewInfo(VK_FORMAT_R8G8B8A8_SRGB, resTexture.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
     vkCreateImageView(device, &imageInfo, nullptr, &resTexture.imageView);

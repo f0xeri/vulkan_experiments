@@ -87,7 +87,9 @@ void Application::initPipelines() {
     cvpiTexture.loadTextureFromFile("assets/cvpi.jpg");
 
     Texture cvpiTexture2("cvpiTexture2");
-    cvpiTexture2.loadTextureFromFile("assets/cvpi2.jpg");
+    cvpiTexture2 = cvpiTexture;
+    cvpiTexture2.name = "cvpiTexture2";
+
 
     vulkanBackend->addTexture(cvpiTexture, 0);
     vulkanBackend->addTexture(cvpiTexture2, 1);
