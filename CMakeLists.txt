@@ -7,7 +7,7 @@ find_package(Threads REQUIRED)
 find_package(Vulkan REQUIRED)
 find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
 
-add_executable(vulkan_experiments main.cpp thirdParty/stb_image.h core/Application.cpp core/Application.hpp render/vulkan/VulkanBackend.cpp render/vulkan/VulkanBackend.hpp render/vulkan/VulkanPipelineBuilder.cpp render/vulkan/VulkanPipelineBuilder.hpp render/vulkan/VulkanBuffer.cpp render/vulkan/VulkanBuffer.hpp render/vulkan/VulkanMesh.cpp render/vulkan/VulkanMesh.hpp core/Mesh.hpp core/Shader.hpp render/vulkan/VulkanShader.cpp render/vulkan/VulkanShader.hpp core/DescriptorBinding.hpp core/Texture.hpp)
+add_executable(vulkan_experiments main.cpp thirdParty/stb_image.h core/Application.cpp core/Application.hpp render/vulkan/VulkanBackend.cpp render/vulkan/VulkanBackend.hpp render/vulkan/VulkanPipelineBuilder.cpp render/vulkan/VulkanPipelineBuilder.hpp render/vulkan/VulkanBuffer.cpp render/vulkan/VulkanBuffer.hpp render/vulkan/VulkanMesh.cpp render/vulkan/VulkanMesh.hpp core/Mesh.hpp core/Shader.hpp render/vulkan/VulkanShader.cpp render/vulkan/VulkanShader.hpp core/DescriptorBinding.hpp core/Texture.hpp core/Camera.cpp core/Camera.hpp)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/thirdParty/glfw)
 target_include_directories(

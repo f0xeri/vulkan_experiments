@@ -26,6 +26,7 @@ struct VulkanVertex : public Vertex {
 
 struct VulkanMesh : public Mesh {
     VulkanBuffer vertexBuffer;
+    VulkanBuffer indexBuffer;
 };
 
 struct VulkanMaterial {

@@ -5,6 +5,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "Application.hpp"
 #include "Shader.hpp"
+#include "Camera.hpp"
 
 Application::Application(int width, int height, const char* title) {
     this->width = width;
@@ -28,6 +29,8 @@ Application::Application(int width, int height, const char* title) {
         auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
         app->vulkanBackend->setWindowExtent(width, height);
         app->vulkanBackend->recreateSwapchain(width, height);
+        app->width = width;
+        app->height = height;
     });
     initScene();
     vulkanBackend->init(width, height);
@@ -60,13 +63,13 @@ void Application::initScene() {
 }
 
 void Application::run() {
-    glm::vec3 camPos = { 0.f,0.f,-100.f };
+    glm::vec3 camPos = { 0.f,-10.0f,-100.f };
     while (!glfwWindowShouldClose(mainWindow.get())) {
         glfwPollEvents();
         vulkanBackend->beginFrame();
 
         glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
-        glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)width / height, 0.1f, 200.0f);
         projection[1][1] *= -1;
 
         vulkanBackend->bindPipeline("default");
@@ -87,7 +90,7 @@ void Application::initPipelines() {
     cvpiTexture.loadTextureFromFile("assets/cvpi.jpg");
 
     Texture cvpiTexture2("cvpiTexture2");
-    cvpiTexture2 = cvpiTexture;
+    cvpiTexture2.loadTextureFromFile("assets/cvpi2.jpg");
     cvpiTexture2.name = "cvpiTexture2";
 
 

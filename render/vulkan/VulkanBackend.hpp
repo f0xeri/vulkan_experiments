@@ -201,6 +201,7 @@ public:
     void beginFrame();
     void drawMeshes();
     void drawMesh(const VulkanMesh &mesh);
+    void drawMeshIndexed(const VulkanMesh &mesh);
     void endFrame();
     void drawFrame();
 

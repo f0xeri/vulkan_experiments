@@ -9,7 +9,7 @@ layout(set = 1, binding = 0) uniform sampler2D tex1;
 layout(set = 1, binding = 1) uniform sampler2D tex2;
 void main()
 {
-    vec3 color = texture(tex1, texCoord).xyz;
+    vec3 color = texture(tex2, texCoord).xyz;
     //vec3 color = inColor;
     outFragColor = vec4(color, 1.0f);
 }

@@ -30,6 +30,12 @@ public:
     const char *name;
     int width{}, height{}, nrChannels{};
     unsigned char *data = nullptr;
+
+    // get pixel color
+    glm::vec4 getPixelColor(int x, int y) const {
+        int index = (y * width + x) * 4;
+        return {data[index], data[index + 1], data[index + 2], data[index + 3]};
+    }
 };
 
 
